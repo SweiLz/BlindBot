@@ -43,7 +43,7 @@ def parseGPS(strx):
         print(msg.lat)
 
 
-serialPort = serial.Serial("/dev/ttyUSB0", 9600, timeout=0.5)
+serialPort = serial.Serial("/dev/ttyS0", 9600, timeout=0.5)
 while True:
     strx = serialPort.readline().decode("utf-8", errors="ignore")
     # print(strx)

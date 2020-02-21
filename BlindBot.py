@@ -1,12 +1,39 @@
-import googlemaps
+# import googlemaps
+import threading
+import time
+
+import serial
+
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BOARD)
+GPIO.setwarnings(False)
 
 API = "AIzaSyB_x-KSdYGw4AOXM95Tx6V0JGAFFUnhOVY"
 
 
 class BlindBot:
+    PIN_BUZZER = 18
+    PIN_TRIGGER = 7
+    PIN_ECHO = 11
+
     def __init__(self, port):
         self._port = port
         self._baudrate = 115200
+        self._isRunning = False
+
+        self._thread_buzzer = threading.Thread(target=self._func_buzzer)
+        self._thread_ultra = threading.Thread(target=self._func_ultra)
+        self._thread_gps = threading.Thread(target=self._func_gps)
+
+        self._buzzer_freq = 0.0
+        self._range_ultra = 0.0
+
+    def run(self):
+        self._isRunning = True
+        self._thread_buzzer.start()
+        self._thread_ultra.start()
+        self._thread_gps.start()
 
     def getCurrentLocation(self):
         pass
@@ -14,13 +41,106 @@ class BlindBot:
     def _azimuth(self, pos1, pos2):
         pass
 
+    def _func_gps(self):
+        ser = serial.Serial("/dev/ttyS0", 9600, timeout=0.5)
+        while self._isRunning:
+            try:
+                print(ser.readline())
+            except Exception:
+                print("Destroy GPS")
+                self._isRunning = False
+                break
 
-gmaps = googlemaps.Client(key=API)
+    def _func_ultra(self):
+        GPIO.setup(self.PIN_TRIGGER, GPIO.OUT)
+        GPIO.setup(self.PIN_ECHO, GPIO.IN)
+        GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
+        time.sleep(1)
+        while self._isRunning:
+            try:
+                GPIO.output(self.PIN_TRIGGER, GPIO.HIGH)
+                time.sleep(0.00001)
+                GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
+                while GPIO.input(self.PIN_ECHO) == 0:
+                    pulse_start_time = time.time()
+                while GPIO.input(self.PIN_ECHO) == 1:
+                    pulse_end_time = time.time()
 
-Anman_WP = [[13.648448, 100.476775],
-            [13.648501, 100.476604],
-            [13.648865, 100.476688],
-            [13.648919, 100.476626]]
+                pulse_duration = pulse_end_time - pulse_start_time
+                self._range_ultra = round(pulse_duration*17150, 2)
+                time.sleep(0.05)
+            except Exception:
+                print("Destroy Ultrasonic")
+                self._isRunning = False
+                break
+
+    def _func_buzzer(self):
+        GPIO.setup(self.PIN_BUZZER, GPIO.OUT)
+        buzzState = False
+        while self._isRunning:
+            try:
+                if self._buzzer_freq > 1.0:
+                    self._buzzer_freq = 1.0
+                elif self._buzzer_freq < 0.0:
+                    self._buzzer_freq = 0.0
+                if self._buzzer_freq <= 0.03:
+                    buzzState = False
+                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    time.sleep(0.25)
+                elif self._buzzer_freq >= 0.97:
+                    buzzState = True
+                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    time.sleep(0.25)
+                else:
+                    buzzState = not buzzState
+                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    time.sleep(1.0-1.0*self._buzzer_freq)
+            except Exception:
+                print("Destroy Buzzer")
+                self._isRunning = False
+                break
+
+
+if __name__ == "__main__":
+    try:
+        print("Hello World")
+        robot = BlindBot("/dev/ttyUSB0")
+        robot.run()
+        start_time = time.time()
+
+        while time.time() - start_time < 20:
+            # strx =
+
+            pass
+            # if robot._range_ultra < 10:
+            #     robot._buzzer_freq = 1.0
+            # elif robot._range_ultra > 180:
+            #     robot._buzzer_freq = 0.0
+            # else:
+            #     robot._buzzer_freq = 1.0 - (robot._range_ultra-10)/170.0
+            #     print(robot._buzzer_freq)
+            # pass
+
+        # robot._buzzer_freq = 0.95
+        # time.sleep(3)
+        # robot._buzzer_freq = 0.1
+        # time.sleep(3)
+
+    except Exception as e:
+        print(e)
+        pass
+    finally:
+        GPIO.cleanup()
+
+
+# gmaps = googlemaps.Client(key=API)
+
+# Anman_WP = [[13.648448, 100.476775],
+#             [13.648501, 100.476604],
+#             [13.648865, 100.476688],
+#             [13.648919, 100.476626]]
+
+
 # geocode_result = gmaps.geocode("สยามพารากอน")
 # print(geocode_result)
 # print("\n\n")
