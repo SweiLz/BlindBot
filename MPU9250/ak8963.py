@@ -59,8 +59,8 @@ class AK8963:
             self._CNTL1, (self.MODE_CONTINOUS_MEASURE_1 | self.OUTPUT_16_BIT))
         self._so = self._SO_16BIT
 
-        print(self._adjustment)
-        print(self.magnetic)
+        # print(self._adjustment)
+        # print(self.magnetic)
 
     @property
     def magnetic(self):
@@ -153,9 +153,10 @@ class AK8963:
 
 
 if __name__ == "__main__":
-    ak8963 = AK8963(offset=(222.03281249999998, -27.3427734375, -213.86777343749998),
-                    scale=(1.0204042715484378, 0.9326361655773395, 1.0551118998323985))
+    # ak8963 = AK8963(offset=(235.83749999999998, -21.515625, -186.219140625),
+    #                 scale=(0.7273713128976287, 0.752956144289777, 3.3660086985613935))
+    ak8963 = AK8963()
     print(ak8963.calibrate())
-    # while True:
-    # print(ak8963.magnetic)
-    # sleep(0.1)
+    while True:
+        print(ak8963.magnetic)
+        sleep(0.1)

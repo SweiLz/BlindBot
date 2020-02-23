@@ -1,5 +1,11 @@
 # import googlemaps
 import threading
+import math
+import time
+import pigpio
+
+from .BlindBot.sonar import *
+
 from math import copysign
 from time import sleep, time
 
@@ -16,14 +22,15 @@ API = "AIzaSyB_x-KSdYGw4AOXM95Tx6V0JGAFFUnhOVY"
 
 
 class BlindBot:
-    PIN_BUZZER = 18
-    PIN_TRIGGER = 7
-    PIN_ECHO = 11
+    PIN_BUZZER = 23
+    PIN_TRIGGER = 13
+    PIN_ECHO = 15
 
-    def __init__(self, port):
-        self._port = port
+    def __init__(self):
+        # self._port = port
         self._baudrate = 115200
         self._isRunning = False
+        self.gpio = pigpio.pi()
 
         self._thread_buzzer = threading.Thread(target=self._func_buzzer)
         self._thread_ultra = threading.Thread(target=self._func_ultra)
@@ -34,9 +41,9 @@ class BlindBot:
 
     def run(self):
         self._isRunning = True
-        self._thread_buzzer.start()
+        # self._thread_buzzer.start()
         self._thread_ultra.start()
-        self._thread_gps.start()
+        # self._thread_gps.start()
 
     def getCurrentLocation(self):
         pass
@@ -55,22 +62,41 @@ class BlindBot:
                 break
 
     def _func_ultra(self):
-        GPIO.setup(self.PIN_TRIGGER, GPIO.OUT)
-        GPIO.setup(self.PIN_ECHO, GPIO.IN)
-        GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
+        # GPIO.setup(self.PIN_TRIGGER, GPIO.OUT)
+        # GPIO.setup(self.PIN_ECHO, GPIO.IN)
+        # GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
+        self.gpio.set_mode(22, pigpio.INPUT)
+        self.gpio.set_mode(27, pigpio.OUTPUT)
+        self.gpio.write(27, 0)
         sleep(1)
+        pulse_start_time = 0
+
+        def _cbf():
+            print(self.gpio.read(22))
         while self._isRunning:
             try:
-                GPIO.output(self.PIN_TRIGGER, GPIO.HIGH)
+                # GPIO.output(self.PIN_TRIGGER, GPIO.HIGH)
+                self.gpio.write(27, 1)
+
                 sleep(0.00001)
-                GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
-                while GPIO.input(self.PIN_ECHO) == 0:
+                self.gpio.write(27, 0)
+
+                # GPIO.output(self.PIN_TRIGGER, GPIO.LOW)
+                # self.gpio.callback(self.)
+                # print(self.gpio.read(22))
+                # while GPIO.input(self.PIN_ECHO) == 0:
+                while self.gpio.read(22) == 0:
+                    print(self.gpio.read(22))
                     pulse_start_time = time()
-                while GPIO.input(self.PIN_ECHO) == 1:
+                # print(self.gpio.read(22))
+                while self.gpio.read(22) == 1:
+                    print(self.gpio.read(22))
+                # while GPIO.input(self.PIN_ECHO) == 1:
                     pulse_end_time = time()
 
                 pulse_duration = pulse_end_time - pulse_start_time
                 self._range_ultra = round(pulse_duration*17150, 2)
+                print(self._range_ultra)
                 sleep(0.05)
             except Exception:
                 print("Destroy Ultrasonic")
@@ -78,7 +104,6 @@ class BlindBot:
                 break
 
     def _func_buzzer(self):
-        GPIO.setup(self.PIN_BUZZER, GPIO.OUT)
         buzzState = False
         while self._isRunning:
             try:
@@ -88,15 +113,15 @@ class BlindBot:
                     self._buzzer_freq = 0.0
                 if self._buzzer_freq <= 0.03:
                     buzzState = False
-                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    self.gpio.write(self.PIN_BUZZER, buzzState)
                     sleep(0.25)
                 elif self._buzzer_freq >= 0.97:
                     buzzState = True
-                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    self.gpio.write(self.PIN_BUZZER, buzzState)
                     sleep(0.25)
                 else:
                     buzzState = not buzzState
-                    GPIO.output(self.PIN_BUZZER, buzzState)
+                    self.gpio.write(self.PIN_BUZZER, buzzState)
                     sleep(1.0-1.0*self._buzzer_freq)
             except Exception:
                 print("Destroy Buzzer")
@@ -106,29 +131,30 @@ class BlindBot:
 
 if __name__ == "__main__":
     try:
-        drive = Drive3Omni((33, 31, 29), (35, 37, 40), (32, 36, 38))
+        # drive = Drive3Omni((33, 31, 29), (35, 37, 40), (32, 36, 38))
 
-        mpu9250 = MPU9250()
+        # mpu9250 = MPU9250()
         # GPIO.cleanup()
 
         print("Hello World")
-        robot = BlindBot("/dev/ttyUSB0")
+        robot = BlindBot()
+        robot._buzzer_freq = 0.96
         # robot.run()
         start_time = time()
 
         while time() - start_time < 50:
-            yaw_error = mpu9250.euler[2]-10
-            if abs(yaw_error) > 3:
-                u = drive.drive(
-                    (0, 0, copysign(1, -yaw_error)), (1, 1, 1))
-            else:
-                u = (0, 0, 0)
-            drive.motor1.setSpeed(u[0])
-            drive.motor2.setSpeed(u[1])
-            drive.motor3.setSpeed(u[2])
-            print(yaw_error)
-            sleep(0.01)
-            # pass
+            # yaw_error = mpu9250.euler[2]-10
+            # if abs(yaw_error) > 3:
+            #     u = drive.drive(
+            #         (0, 0, copysign(1, -yaw_error)), (1, 1, 1))
+            # else:
+            #     u = (0, 0, 0)
+            # drive.motor1.setSpeed(u[0])
+            # drive.motor2.setSpeed(u[1])
+            # drive.motor3.setSpeed(u[2])
+            # print(yaw_error)
+            # sleep(0.01)
+            pass
             # if robot._range_ultra < 10:
             #     robot._buzzer_freq = 1.0
             # elif robot._range_ultra > 180:
@@ -147,6 +173,7 @@ if __name__ == "__main__":
         print(e)
         pass
     finally:
+        robot._buzzer_freq = 0.0
         GPIO.cleanup()
 
 

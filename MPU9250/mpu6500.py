@@ -175,8 +175,8 @@ class MPU6500:
 
 
 if __name__ == "__main__":
-    mpu6500 = MPU6500(gyro_offset=(0.023573082200942806,
-                                   0.0038782781446390514, -0.010209364246294194))
+    mpu6500 = MPU6500(gyro_offset=(0.021079159915769665,
+                                   0.00029300464243582684, -0.012618455702485027))
     # print(mpu6500.calibrate())
     # while True:
     # print(mpu6500.gyro, mpu6500.acceleration)
