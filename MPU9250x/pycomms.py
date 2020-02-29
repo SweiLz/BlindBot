@@ -70,6 +70,16 @@ class PyComms:
 
         return self.write8(reg, b)
 
+    def readBytes(self, reg, length):
+        output = []
+
+        i = 0
+        while i < length:
+            output.append(self.readU8(reg))
+            i += 1
+
+        return output
+
     def readBytesListU(self, reg, length):
         output = []
 
@@ -150,7 +160,6 @@ class PyComms:
         except (IOError):
             print("Error accessing 0x%02X: Check your I2C address" % self.address)
             return -1
-    ##################################################################################
 
     def readByte(self, reg):
         try:
@@ -160,24 +169,10 @@ class PyComms:
             print("Error accessing 0x%02X: Check your I2C address" % self.address)
             return -1
 
-    def readBytes(self, reg, length):
-        try:
-            result = self.bus.read_i2c_block_data(self.address, reg, length)
-            return result
-        except (IOError):
-            print("Error accessing 0x%02X: Check your I2C address" % self.address)
-            return -1
-
     def writeByte(self, reg, value):
+        # Writes an 8-bit value to the specified register/address
         try:
             self.bus.write_byte_data(self.address, reg, value)
-        except (IOError):
-            print("Error accessing 0x%02X: Check your I2C address" % self.address)
-            return -1
-
-    def writeBytes(self, reg, values):
-        try:
-            self.bus.write_i2c_block_data(self.address, reg, values)
         except (IOError):
             print("Error accessing 0x%02X: Check your I2C address" % self.address)
             return -1

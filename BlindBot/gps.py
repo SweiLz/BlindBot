@@ -25,7 +25,7 @@ import pynmea2
 
 class GPS:
     def __init__(self, port):
-        self.ser = serial.Serial(port, 9600, timeout=0.5)
+        self.ser = serial.Serial(port, 9600, timeout=2)
 
     def read_GPS(self):
         while True:
@@ -35,11 +35,11 @@ class GPS:
                 return (data.latitude, data.longitude)
 
 
-if __name__ == "__main__":
-    gps = GPS("/dev/ttyS0")
-    while True:
-        # data = gps.read_GPS()
-        print(gps.ser.readline())
+# if __name__ == "__main__":
+#     gps = GPS("/dev/ttyS0")
+#     while True:
+#         data = gps.read_GPS()
+#         # print(gps.ser.readline())
 
-        # print(data)
-        # print(dir(data))
+#         print(data)
+#         # print(dir(data))

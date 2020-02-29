@@ -66,8 +66,9 @@ class YDLidarX4:
         self._isConnected = False
         self._isScanning = False
         try:
-            self._serial = Serial(self._port, self._baudrate, timeout=2.0)
+            self._serial = Serial(self._port, self._baudrate, timeout=3.0)
             self._isConnected = True
+            time.sleep(1)
             self._serial.reset_input_buffer()
             self._serial.write([0xA5, 0x00])
             self._serial.write([0xA5, 0x65])
@@ -75,8 +76,10 @@ class YDLidarX4:
             self._serial.flush()
 
         except Exception as e:
-            print("Cannot open port {}".format(self._port))
-            return
+            print(e)
+            # print("Ho")
+            # print("Cannot open port {}".format(self._port))
+            return None
 
         self.thread = threading.Thread(target=self.cacheScanData)
 
@@ -97,14 +100,17 @@ class YDLidarX4:
         self.scan.config.min_range = 0.1
         self.scan.config.max_range = 10.0
         self.scan.points.clear()
+        self._scanned = False
 
     def cacheScanData(self):
         index = 0
         count = 128
+        # print("cache")
         local_scan = np.zeros((3600, 3), dtype=int)
         scan_count = 0
         while self._isScanning:
             # try:
+            # print("u")
             local_buf, count = self._waitScanData(count)
             # except Exception as e:
             #     print(e)
@@ -120,6 +126,7 @@ class YDLidarX4:
                 scan_count += 1
                 if scan_count == local_scan.shape[0]:
                     scan_count -= 1
+            self._scanned = True
 
         self._isScanning = False
         # print("Break")
@@ -127,7 +134,9 @@ class YDLidarX4:
     def _waitScanData(self, count):
         nodebuffer = np.zeros((count, 3), dtype=int)
         recvNodeCount = 0
+
         while recvNodeCount < count:
+            # print(recvNodeCount)
             node = self._waitPackage()
             nodebuffer[recvNodeCount] = node
             recvNodeCount += 1
@@ -152,7 +161,7 @@ class YDLidarX4:
             SampleNumlAndCTCal = 0
             LastSampleAngleCal = 0
             while recvPos != 10:
-                currentByte = ord(self._serial.read())
+                currentByte = ord(self._serial.read(1))
                 if recvPos == 0:
                     if currentByte == 0xAA:
                         pass
@@ -221,9 +230,10 @@ class YDLidarX4:
 
             Valu8Tou16 = 0
             self._package_sample_distance.clear()
-            # recvBuffer = list(self._serial.read(self._package_num * 2))
-            for i in range(self._package_num * 2):
-                currentByte = ord(self._serial.read())
+            recvBuffer = list(self._serial.read(self._package_num * 2))
+            # for i in range(self._package_num * 2):
+            #     currentByte = ord(self._serial.read(1))
+            for i, currentByte in enumerate(recvBuffer):
                 if i % 2 == 1:
                     Valu8Tou16 += currentByte * 0x100
                     CheckSumCal ^= Valu8Tou16
@@ -277,21 +287,9 @@ class YDLidarX4:
             self._package_checksum_result = False
         return node
 
-    @classmethod
-    def _AngleCorr(cls, dist):
-        if dist == 0:
-            return 0
-        else:
-            return int((atan(((21.8 * (155.3 - (dist / 4.0))) / 155.3) / (dist / 4.0)) * 180.0/pi)*64.0)
-
-    @classmethod
-    def _NormalizeAngle(cls, angle):
-        a = ((angle % (2.0*pi))+2.0*pi) % (2.0*pi)
-        if a > pi:
-            a -= 2.0 * pi
-        return a
-
     def getScanData(self):
+        while not self._scanned:
+            pass
         global_nodes = self._scan_node_buf
         all_nodes_counts = self._scan_node_count
         self.scan.points.clear()
@@ -316,14 +314,18 @@ class YDLidarX4:
                 self.scan.points.append(point)
 
     def startScanning(self):
+        # print("sxx")
         if not self._isConnected:
+            print("lidar not connect")
             return
         self._serial.setDTR(1)
-        self._serial.flush()
+        self._serial.flushInput()
+        self._serial.flushOutput()
         self._serial.write([0xA5, 0x60])
-        time.sleep(0.1)
+        # time.sleep(0.2)
         # print(self._serial.inWaiting())
         lidar_ans_header = unpack("<BBhhB", self._serial.read(7))
+        # print("Hiii")
         # print(lidar_ans_header)
 
         self._isScanning = True
@@ -344,3 +346,17 @@ class YDLidarX4:
         device_health = unpack("<BH", self._serial.read(lidar_ans_header[2]))
         # print(lidar_ans_header)
         # print(device_health)
+
+    @classmethod
+    def _AngleCorr(cls, dist):
+        if dist == 0:
+            return 0
+        else:
+            return int((atan(((21.8 * (155.3 - (dist / 4.0))) / 155.3) / (dist / 4.0)) * 180.0/pi)*64.0)
+
+    @classmethod
+    def _NormalizeAngle(cls, angle):
+        a = ((angle % (2.0*pi))+2.0*pi) % (2.0*pi)
+        if a > pi:
+            a -= 2.0 * pi
+        return a

@@ -1,7 +1,7 @@
 import struct
 from time import sleep
 
-from .pycomms import PyComms
+from pycomms import PyComms
 
 
 class MPU6500:
