@@ -12,15 +12,18 @@ from BlindBot.sonar import Sonar
 from MPU9250.mpu9250 import MPU9250
 from PyYDLidar.PyYDLidar import LaserScan, YDLidarX4
 
+
 app = Flask(__name__)
 api = Api(app)
 
+sleep(10)
 # @app.before_first_request
 # def initialize():
 #     global lidar
 #     lidar = YDLidarX4("/dev/ttyLidar")
 #     lidar.startScanning()
 #     pass
+# print("HWWW")
 
 
 class Robot:
@@ -65,8 +68,11 @@ class Robot:
 
     def run(self):
         self._isRunning = True
+        self._thread_buzzer.start()
+        self._buzzer_freq = 0.95
+        sleep(0.5)
+        self._buzzer_freq = 0
         if self._ultra_buzzer_enable:
-            self._thread_buzzer.start()
             self._thread_ultra.start()
         self._thread_drive.start()
         self._thread_gps.start()
@@ -266,6 +272,7 @@ robot._threshold_side = 0.5  # m
 robot._threshold_front = 0.7  # m
 #######
 robot.run()
+# print("HOOOsssssO")
 
 
 class RobotAPI(Resource):
@@ -282,6 +289,10 @@ class RobotAPI(Resource):
 
     def get(self, id=None):
         if id == 201:
+            # print("HOOOO")
+            # robot._buzzer_freq = 0.95
+            # sleep(0.5)
+            # robot._buzzer_freq = 0
             ret = {
                 'GPS': robot._gps_location if robot._gps_isOk else [0, 0]
             }
