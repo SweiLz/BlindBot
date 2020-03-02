@@ -182,7 +182,7 @@ class Robot:
                 compass_diff = radians(
                     self._target_head+94 - self._imu_head)
                 turn = atan2(sin(compass_diff), cos(compass_diff))
-
+                self._speed = self._target_speed
                 vx = self._speed
                 w = max(min(-turn * 1.5, 0.6), -0.6)
                 if abs(degrees(turn)) < 15:
@@ -263,7 +263,7 @@ robot = Robot()
 # Robot Speed
 robot._speed = 0.2  # % 0.0 -> 1.0
 # Ultrasonic and Buzzer
-robot._ultra_buzzer_enable = False
+robot._ultra_buzzer_enable = True
 robot._ultra_threshold_stop = 150  # cm
 robot._ultra_sound_freq = 0.85  # % 0.0 -> 1.0
 # Lidar Enable
@@ -289,10 +289,6 @@ class RobotAPI(Resource):
 
     def get(self, id=None):
         if id == 201:
-            # print("HOOOO")
-            # robot._buzzer_freq = 0.95
-            # sleep(0.5)
-            # robot._buzzer_freq = 0
             ret = {
                 'GPS': robot._gps_location if robot._gps_isOk else [0, 0]
             }
@@ -308,7 +304,6 @@ class RobotAPI(Resource):
     def post(self, id):
         if id == 221:
             args = self.parser.parse_args()
-            # print(args['Heading'], args['Speed'])
             robot._target_head = args['Heading']
             robot._target_speed = args['Speed']
             robot._control_flag = True
