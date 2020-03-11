@@ -19,11 +19,7 @@ api = Api(app)
 # sleep(10)
 # @app.before_first_request
 # def initialize():
-#     global lidar
-#     lidar = YDLidarX4("/dev/ttyLidar")
-#     lidar.startScanning()
 #     pass
-# print("HWWW")
 
 
 class Robot:
