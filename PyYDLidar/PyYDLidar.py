@@ -1,6 +1,6 @@
 import threading
 import time
-from math import atan, pi
+from math import atan, pi, ceil
 
 import numpy as np
 from serial import Serial
@@ -66,7 +66,7 @@ class YDLidarX4:
         self._isConnected = False
         self._isScanning = False
         try:
-            self._serial = Serial(self._port, self._baudrate, timeout=3.0)
+            self._serial = Serial(self._port, self._baudrate, timeout=1.0)
             self._isConnected = True
             time.sleep(1)
             self._serial.reset_input_buffer()
@@ -77,11 +77,7 @@ class YDLidarX4:
 
         except Exception as e:
             print(e)
-            # print("Ho")
-            # print("Cannot open port {}".format(self._port))
             return None
-
-        self.thread = threading.Thread(target=self.cacheScanData)
 
         self._package_sample_index = 0
         self._package_type = 0
@@ -100,36 +96,6 @@ class YDLidarX4:
         self.scan.config.min_range = 0.1
         self.scan.config.max_range = 10.0
         self.scan.points.clear()
-        self._scanned = False
-
-    def cacheScanData(self):
-        index = 0
-        count = 128
-        # print("cache")
-        local_scan = np.zeros((3600, 3), dtype=int)
-        scan_count = 0
-        while self._isScanning:
-            # try:
-            # print("u")
-            local_buf, count = self._waitScanData(count)
-            # except Exception as e:
-            #     print(e)
-            #     break
-
-            for pos in range(count):
-                if local_buf[pos][0] & (0x1 << 0):
-                    if local_scan[0][0] & (0x1 << 0):
-                        self._scan_node_buf = local_scan
-                        self._scan_node_count = scan_count
-                    scan_count = 0
-                local_scan[scan_count] = local_buf[pos]
-                scan_count += 1
-                if scan_count == local_scan.shape[0]:
-                    scan_count -= 1
-            self._scanned = True
-
-        self._isScanning = False
-        # print("Break")
 
     def _waitScanData(self, count):
         nodebuffer = np.zeros((count, 3), dtype=int)
@@ -288,52 +254,75 @@ class YDLidarX4:
         return node
 
     def getScanData(self):
-        while not self._scanned:
-            pass
-        global_nodes = self._scan_node_buf
-        all_nodes_counts = self._scan_node_count
-        self.scan.points.clear()
-        self.scan.config.ang_increment = (
-            self.scan.config.max_angle - self.scan.config.min_angle) / (all_nodes_counts - 1)
+        if not self._isConnected:
+            raise Exception("Device is not connected")
+        if not self._isScanning:
+            self.startScanning()
 
-        # print(all_nodes_counts)
-        for i in range(all_nodes_counts):
-            # print(global_nodes[i][2], global_nodes[i][1])
-            angle = float((global_nodes[i][2] >> 1)/64) * pi / 180.0
-            distance = float(global_nodes[i][1]) / 4000.0
-            angle = 2*pi - angle
-            angle = self._NormalizeAngle(angle)
+        index = 0
+        count = 128
+        local_scan = np.zeros((3600, 3), dtype=int)
+        scan_count = 0
+        self._serial.flushInput()
+        self._serial.flushOutput()
+        while self._isScanning:
+            # t = time.time()
+            local_buf, count = self._waitScanData(count)
+            for pos in range(count):
+                if local_buf[pos][0] & (0x1 << 0):
+                    if local_scan[0][0] & (0x1 << 0):
+                        self._scan_node_buf = local_scan
+                        self._scan_node_count = scan_count
+                        self.scan.points.clear()
+                        pp = []
 
-            if not (distance >= self.scan.config.min_range and distance <= self.scan.config.max_range):
-                distance = 0
-            if angle >= self.scan.config.min_angle and angle <= self.scan.config.max_angle:
-                point = LaserScan.LaserPoint()
-                point.angle = angle
-                point.dist = distance
-                point.intensity = 0
-                self.scan.points.append(point)
+                        self.scan.config.ang_increment = (
+                            self.scan.config.max_angle - self.scan.config.min_angle) / (self._scan_node_count - 1)
+                        for i in range(self._scan_node_count):
+                            angle = float(
+                                (self._scan_node_buf[i][2] >> 1)/64) * pi / 180.0
+                            distance = float(
+                                self._scan_node_buf[i][1]) / 4000.0
+                            angle = 2*pi - angle
+                            angle = self._NormalizeAngle(angle)
+
+                            if not (distance >= self.scan.config.min_range and distance <= self.scan.config.max_range):
+                                distance = 0
+                            if angle >= self.scan.config.min_angle and angle <= self.scan.config.max_angle:
+                                point = LaserScan.LaserPoint()
+                                point.angle = angle
+                                point.dist = distance
+                                point.intensity = 0
+
+                                self.scan.points.append(point)
+                                pp.append((angle, distance))
+
+                        # print(self._scan_node_count)
+                        self._serial.flushInput()
+                        self._serial.flushOutput()
+                        yield self.scan.points
+                    scan_count = 0
+                local_scan[scan_count] = local_buf[pos]
+                scan_count += 1
+                if scan_count == local_scan.shape[0]:
+                    scan_count -= 1
+            # print(time.time()-t)
+
+        self._isScanning = False
 
     def startScanning(self):
-        # print("sxx")
         if not self._isConnected:
-            print("lidar not connect")
-            return
+            raise Exception("Device is not connected")
         self._serial.setDTR(1)
         self._serial.flushInput()
         self._serial.flushOutput()
         self._serial.write([0xA5, 0x60])
-        # time.sleep(0.2)
-        # print(self._serial.inWaiting())
         lidar_ans_header = unpack("<BBhhB", self._serial.read(7))
-        # print("Hiii")
-        # print(lidar_ans_header)
-
         self._isScanning = True
-        self.thread.start()
 
     def stopScanning(self):
         if not self._isConnected:
-            return
+            raise Exception("Device is not connected")
         self._serial.setDTR(0)
         self._serial.flush()
         self._isScanning = False
@@ -344,8 +333,6 @@ class YDLidarX4:
         time.sleep(0.1)
         lidar_ans_header = unpack("<BBHHB", self._serial.read(7))
         device_health = unpack("<BH", self._serial.read(lidar_ans_header[2]))
-        # print(lidar_ans_header)
-        # print(device_health)
 
     @classmethod
     def _AngleCorr(cls, dist):

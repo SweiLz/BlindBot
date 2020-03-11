@@ -16,7 +16,7 @@ from PyYDLidar.PyYDLidar import LaserScan, YDLidarX4
 app = Flask(__name__)
 api = Api(app)
 
-sleep(10)
+# sleep(10)
 # @app.before_first_request
 # def initialize():
 #     global lidar
@@ -37,11 +37,9 @@ class Robot:
         self._thread_drive = threading.Thread(target=self._func_drive)
         self._drive_speed = [0.0, 0.0, 0.0]
 
-        self._thread_gps = threading.Thread(target=self._func_gps)
+        self._thread_gps_ultra = threading.Thread(target=self._func_gps_ultra)
         self._gps_isOk = False
         self._gps_location = None
-
-        self._thread_ultra = threading.Thread(target=self._func_ultra)
         self._range_ultra = 0.0
 
         self._thread_imu = threading.Thread(target=self._func_imu)
@@ -56,7 +54,7 @@ class Robot:
         self._thread_lidar = threading.Thread(target=self._func_lidar)
         self._lidar_detect = [0, 0, 0]
 
-        self._ultra_buzzer_enable = False
+        self._ultra_buzzer_enable = True
         self._ultra_threshold_stop = 150  # cm
         self._ultra_sound_freq = 0.85  # % 0.0 -> 1.0
 
@@ -72,20 +70,22 @@ class Robot:
         self._buzzer_freq = 0.95
         sleep(0.5)
         self._buzzer_freq = 0
-        if self._ultra_buzzer_enable:
-            self._thread_ultra.start()
         self._thread_drive.start()
-        self._thread_gps.start()
+
+        self._thread_gps_ultra.start()
         self._thread_imu.start()
         self._thread_control.start()
-        if self._lidar_enable:
-            self._thread_lidar.start()
+        self._thread_lidar.start()
+
+    def stop(self):
+        self._isRunning = False
+        self._control_flag = False
 
     def _func_buzzer(self):
         buzzState = False
         buzz_pin = 23
         while self._isRunning:
-            self._buzzer_freq = max(-1.0, min(1.0, self._buzzer_freq))
+            self._buzzer_freq = max(0, min(1.0, self._buzzer_freq))
             if self._buzzer_freq <= 0.03:
                 buzzState = False
                 self.pi.write(buzz_pin, buzzState)
@@ -108,9 +108,13 @@ class Robot:
             sleep(0.1)
         base.drive((0, 0, 0))
 
-    def _func_gps(self):
+    def _func_gps_ultra(self):
         gps = GPS("/dev/ttyS0")
+        sonar_trig = 27
+        sonar_echo = 22
+        sonar = Sonar(self.pi, sonar_trig, sonar_echo)
         while self._isRunning:
+            self._range_ultra = sonar.getDist()
             lat, lon = gps.read_GPS()
             if lat == 0 or lon == 0:
                 self._gps_isOk = False
@@ -121,16 +125,8 @@ class Robot:
             else:
                 self._gps_location[0] = lat * 0.5 + self._gps_location[0]*0.5
                 self._gps_location[1] = lon * 0.5 + self._gps_location[1]*0.5
-            # print(self._gps_location)
 
-    def _func_ultra(self):
-        sonar_trig = 27
-        sonar_echo = 22
-        sonar = Sonar(self.pi, sonar_trig, sonar_echo)
-        while self._isRunning:
-            self._range_ultra = sonar.getDist()
-            sleep(0.2)
-            # print(self._range_ultra)
+            # print(self._gps_location)
         sonar.cancel()
 
     def _func_imu(self):
@@ -151,111 +147,101 @@ class Robot:
                          sqrt((accel[1]*accel[1]) + (accel[2]*accel[2])))
 
             current_data = time()
-
             dt = current_data - last_data
             last_data = current_data
-
             if _roll == None:
                 _roll = roll
             if _pitch == None:
                 _pitch = pitch
 
-            _roll = 0.95*(_roll+gyro[0]*dt) + 0.05*roll
-            _pitch = 0.95*(_pitch+gyro[1]*dt) + 0.05*pitch
+            _roll = 0.85*(_roll+gyro[0]*dt) + 0.1*_roll + 0.05*roll
+            _pitch = 0.85*(_pitch+gyro[1]*dt) + 0.1*_pitch + 0.05*roll
             Yh = (mag[1] * cos(_roll)) - (mag[2]*sin(_roll))
             Xh = (mag[0] * cos(_pitch)) + (mag[1] * sin(_roll) *
                                            sin(_pitch)) + (mag[2] * cos(roll)*sin(_pitch))
 
             _yaw = atan2(Yh, Xh)
-            # yaw = 0.7
-            # imu.update()
-            self._imu_head = degrees(_yaw)  # (imu.euler[2])
+            self._imu_head = degrees(_yaw)
             # print(self._imu_head)
-            # sleep(0.05)
-
-    def _func_control(self):
-        self._control_flag = False
-        base = Omni3Wheel(self.pi, (13, 6, 5), (19, 26, 21),
-                          (12, 16, 20), 0.05, 0.15, (0.1, 0.1, 0.1))
-        while self._isRunning:
-            while self._control_flag:
-                compass_diff = radians(
-                    self._target_head+94 - self._imu_head)
-                turn = atan2(sin(compass_diff), cos(compass_diff))
-                self._speed = self._target_speed
-                vx = self._speed
-                w = max(min(-turn * 1.5, 0.6), -0.6)
-                if abs(degrees(turn)) < 15:
-                    vx = self._speed
-
-                vy = 0.0
-
-                if self._lidar_enable:
-                    pass
-                    # if self._lidar_detect[0] and self._lidar_detect[2]:
-                    #     vy = 0.0
-                    # elif self._lidar_detect[0]:
-                    #     vy = -0.1
-                    # elif self._lidar_detect[2]:
-                    #     vy = 0.1
-                    # if self._lidar_detect[1]:
-                    #     self._drive_speed[1] = 0
-                if self._ultra_buzzer_enable:
-                    if self._range_ultra < self._ultra_threshold_stop:
-                        self._buzzer_freq = self._ultra_sound_freq
-                        vx = 0
-                        vy = 0
-                        w = 0
-                    else:
-                        self._buzzer_freq = 0.0
-
-                self._drive_speed = (vx, vy, w)
-                # print(self._drive_speed)
-                sleep(0.05)
-
-        base.drive((0, 0, 0))
+            sleep(0.05)
 
     def _func_lidar(self):
         self._lidar_detect = [0, 0, 0]
         lidar = YDLidarX4("/dev/ttyLidar")
         lidar.startScanning()
         sleep(3)
-        count = 0
+        gen = lidar.getScanData()
         while self._isRunning:
-            lidar.getScanData()
             dF = [[], [], []]
-            for i, point in enumerate(lidar.scan.points):
-                if point.dist > 0:
+            for point in next(gen):
+                if point.dist > 0.05:
                     p_ang = round(degrees(point.angle)) + 180
                     if p_ang > 35 and p_ang < 95:
                         dF[0].append(point.dist)
-                    elif p_ang > 330 or p_ang < 30:
+                    elif p_ang > 350 or p_ang < 10:
                         dF[1].append(point.dist)
                     elif p_ang > 235 and p_ang < 325:
                         dF[2].append(point.dist)
 
             if dF[0] != []:
                 if min(dF[0]) < self._threshold_side:
-                    self._lidar_detect[0] = 1
+                    self._lidar_detect[0] = 1  # min(dF[0])
                 else:
                     self._lidar_detect[0] = 0
             if dF[1] != []:
                 if min(dF[1]) < self._threshold_front:
-                    self._lidar_detect[1] = 1
+                    self._lidar_detect[1] = 1  # min(dF[1])
                 else:
                     self._lidar_detect[1] = 0
             if dF[2] != []:
                 if min(dF[2]) < self._threshold_side:
-                    self._lidar_detect[2] = 1
+                    self._lidar_detect[2] = 1  # min(dF[2])
                 else:
                     self._lidar_detect[2] = 0
 
-            sleep(0.15)
         lidar.stopScanning()
 
-    def stop(self):
-        self._isRunning = False
+    def _func_control(self):
         self._control_flag = False
+        while self._isRunning:
+            if self._control_flag:
+
+                compass_diff = radians(
+                    self._target_head+94 - self._imu_head)
+                turn = atan2(sin(compass_diff), cos(compass_diff))
+                self._speed = self._target_speed
+                vx = self._speed
+                w = max(min(-turn * 1.5, 0.6), -0.6)
+                # print(turn, w)
+                if abs(degrees(turn)) < 15:
+                    vx = self._speed
+
+                vy = 0.0
+
+                if self._lidar_enable:
+                    if self._lidar_detect[0] and self._lidar_detect[2]:
+                        vy = 0.0
+                    elif self._lidar_detect[0]:
+                        vy = -0.1
+                    elif self._lidar_detect[2]:
+                        vy = 0.1
+                    if self._lidar_detect[1]:
+                        vx = 0.0
+                if self._ultra_buzzer_enable:
+                    # print(self._range_ultra)
+                    if self._range_ultra > 10 and self._range_ultra < self._ultra_threshold_stop:
+                        self._buzzer_freq = self._ultra_sound_freq
+                        vx = 0.0
+                        vy = 0.0
+                        w = 0.0
+                    else:
+                        self._buzzer_freq = 0.0
+
+                self._drive_speed = (vx, vy, w)
+                # print(self._drive_speed)
+                # print((vx, vy, w))
+            sleep(0.05)
+        self._drive_speed = [0, 0, 0]
 
 
 robot = Robot()
@@ -264,15 +250,14 @@ robot = Robot()
 robot._speed = 0.2  # % 0.0 -> 1.0
 # Ultrasonic and Buzzer
 robot._ultra_buzzer_enable = True
-robot._ultra_threshold_stop = 150  # cm
+robot._ultra_threshold_stop = 60  # cm
 robot._ultra_sound_freq = 0.85  # % 0.0 -> 1.0
 # Lidar Enable
-robot._lidar_enable = False
+robot._lidar_enable = True
 robot._threshold_side = 0.5  # m
 robot._threshold_front = 0.7  # m
 #######
 robot.run()
-# print("HOOOsssssO")
 
 
 class RobotAPI(Resource):
