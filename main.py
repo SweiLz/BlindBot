@@ -16,7 +16,7 @@ from PyYDLidar.PyYDLidar import LaserScan, YDLidarX4
 app = Flask(__name__)
 api = Api(app)
 
-# sleep(10)
+sleep(10)
 # @app.before_first_request
 # def initialize():
 #     pass
@@ -159,7 +159,7 @@ class Robot:
             _yaw = atan2(Yh, Xh)
             self._imu_head = degrees(_yaw)
             # print(self._imu_head)
-            sleep(0.05)
+            sleep(0.01)
 
     def _func_lidar(self):
         self._lidar_detect = [0, 0, 0]
@@ -185,6 +185,7 @@ class Robot:
                 else:
                     self._lidar_detect[0] = 0
             if dF[1] != []:
+                # print(dF[1])
                 if min(dF[1]) < self._threshold_front:
                     self._lidar_detect[1] = 1  # min(dF[1])
                 else:
@@ -234,6 +235,7 @@ class Robot:
                         self._buzzer_freq = 0.0
 
                 self._drive_speed = (vx, vy, w)
+                print(self._lidar_detect)
                 # print(self._drive_speed)
                 # print((vx, vy, w))
             sleep(0.05)
